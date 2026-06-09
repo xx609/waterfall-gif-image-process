@@ -1,0 +1,102 @@
+.content > .wf-field,
+.content > .wf-output,
+.content > #download-button {
+  box-sizing: border-box;
+  display: block;
+  width: min(100%, 520px);
+  margin: 16px auto;
+}
+
+.content > .wf-field {
+  color: #243241;
+  font: 600 15px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.wf-label {
+  display: block;
+  margin-bottom: 7px;
+}
+
+.content input[type="file"],
+.content input[type="number"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #b8c4ce;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17212b;
+  font: 500 15px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.content input[type="file"] {
+  padding: 9px;
+}
+
+.content input[type="number"] {
+  padding: 9px 12px;
+}
+
+.content input:focus-visible,
+.content > #download-button:focus-visible {
+  outline: 3px solid #8fc6ff;
+  outline-offset: 2px;
+}
+
+.content > .wf-output {
+  min-height: 180px;
+  border: 1px dashed #9daeba;
+  border-radius: 8px;
+  background: #f6f9fb;
+  padding: 16px;
+  text-align: center;
+}
+
+.wf-output[aria-busy="true"] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(66, 139, 202, 0.12) 0,
+    rgba(66, 139, 202, 0.12) 12px,
+    rgba(255, 255, 255, 0.1) 12px,
+    rgba(255, 255, 255, 0.1) 24px
+  );
+}
+
+.wf-status,
+.wf-error {
+  margin: 0;
+  color: #43515e;
+  font: 500 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.wf-error {
+  color: #a42222;
+}
+
+#output-image {
+  display: block;
+  max-width: 100%;
+  max-height: 520px;
+  margin: 0 auto;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(25, 43, 61, 0.18);
+}
+
+.content > #download-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 6px;
+  background: #1261a6;
+  color: #ffffff;
+  cursor: pointer;
+  font: 700 15px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.content > #download-button:disabled {
+  background: #9eabb5;
+  cursor: not-allowed;
+}
+
+.content > #download-button:not(:disabled):hover {
+  background: #0c528f;
+}
