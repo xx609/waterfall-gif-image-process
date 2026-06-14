@@ -6,6 +6,7 @@
   var MAX_DIMENSION = 360;
   var MAX_FRAMES = 160;
   var DEFAULT_FILENAME = "waterfall-animation.gif";
+  var DEBUG_PRECOMPRESSION_OUTPUT = true;
 
   var uploadInput = document.getElementById("image-upload");
   var frameRateInput = document.getElementById("frame-rate");
@@ -19,19 +20,27 @@
   var generatedUrl = "";
   var generationId = 0;
   var debounceTimer = 0;
+  var debugCanvas = null;
+  var debugPlaybackTimer = 0;
+  var debugFrameIndex = -1;
 
   uploadInput.addEventListener("change", function () {
     selectedFile = uploadInput.files && uploadInput.files[0] ? uploadInput.files[0] : null;
-    clearGeneratedGif();
+    clearGeneratedOutput();
     scheduleGeneration();
   });
 
   frameRateInput.addEventListener("input", function () {
-    clearGeneratedGif();
+    clearGeneratedOutput();
     scheduleGeneration();
   });
 
   downloadButton.addEventListener("click", function () {
+    if (debugCanvas && debugFrameIndex >= 0) {
+      downloadDebugFrame();
+      return;
+    }
+
     if (!generatedUrl) {
       showError("There is no generated GIF to download yet.");
       return;
@@ -71,13 +80,20 @@
     }
 
     setProcessing(true);
-    setStatus("Processing GIF...");
+    setStatus(DEBUG_PRECOMPRESSION_OUTPUT
+      ? "Preparing pre-compression debug preview..."
+      : "Processing GIF...");
 
     try {
       var image = await loadImageFromFile(selectedFile);
       if (currentGeneration !== generationId) return;
 
       var normalized = drawNormalizedImage(image);
+      if (DEBUG_PRECOMPRESSION_OUTPUT) {
+        startPrecompressionDebugPreview(normalized.canvas, fps.value, currentGeneration);
+        return;
+      }
+
       var gifBytes = await encodeWaterfallGif(normalized.canvas, fps.value);
       if (currentGeneration !== generationId) return;
 
@@ -90,7 +106,9 @@
       setStatus("");
     } catch (error) {
       console.error(error);
-      showError("Unable to generate GIF. Please try a smaller image.");
+      showError(DEBUG_PRECOMPRESSION_OUTPUT
+        ? error.message
+        : "Unable to generate GIF. Please try a smaller image.");
     } finally {
       if (currentGeneration === generationId) {
         setProcessing(false);
@@ -150,30 +168,176 @@
     var frameCanvas = document.createElement("canvas");
     var frameContext = frameCanvas.getContext("2d", { willReadFrequently: true });
     var encoder = new GifEncoder(width, height);
-    var delay = Math.round(1000 / fps);
-    var step = Math.max(1, Math.ceil(height / MAX_FRAMES));
-    var frameCount = Math.ceil(height / step);
+    var framePlan = createFramePlan(height, fps);
 
     frameCanvas.width = width;
     frameCanvas.height = height;
     encoder.writeHeader();
 
-    for (var frame = 0; frame < frameCount; frame += 1) {
-      var offset = frame * step;
+    for (var frame = 0; frame < framePlan.frameCount; frame += 1) {
+      var offset = frame * framePlan.step;
       if (offset >= height) break;
 
       drawRolledFrame(frameContext, sourceCanvas, width, height, offset);
       var imageData = frameContext.getImageData(0, 0, width, height);
-      encoder.addFrame(imageData.data, delay);
+      encoder.addFrame(imageData.data, framePlan.delay);
 
       if (frame % 8 === 0) {
-        setStatus("Processing GIF... frame " + (frame + 1) + " of " + frameCount);
+        setStatus("Processing GIF... frame " + (frame + 1) + " of " + framePlan.frameCount);
         await yieldToBrowser();
       }
     }
 
     encoder.finish();
     return encoder.bytes();
+  }
+
+  function createFramePlan(height, fps) {
+    var step = Math.max(1, Math.ceil(height / MAX_FRAMES));
+
+    return {
+      delay: Math.round(1000 / fps),
+      step: step,
+      frameCount: Math.ceil(height / step)
+    };
+  }
+
+  function startPrecompressionDebugPreview(sourceCanvas, fps, currentGeneration) {
+    stopDebugPlayback();
+
+    var width = sourceCanvas.width;
+    var height = sourceCanvas.height;
+    var framePlan = createFramePlan(height, fps);
+    var canvas = document.createElement("canvas");
+    var context = canvas.getContext("2d", { willReadFrequently: true });
+
+    if (!context) {
+      throw new Error(
+        "Debug preview failed: unable to create a canvas context for " +
+        width + "x" + height + "."
+      );
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", "Pre-compression waterfall animation debug preview");
+    canvas.style.display = "block";
+    canvas.style.margin = "0 auto";
+
+    if (canvas.width !== width || canvas.height !== height) {
+      throw new Error(
+        "Debug preview dimensions are incorrect: expected " +
+        width + "x" + height + ", received " +
+        canvas.width + "x" + canvas.height + "."
+      );
+    }
+
+    outputImage.hidden = true;
+    outputSection.appendChild(canvas);
+    debugCanvas = canvas;
+    debugFrameIndex = -1;
+    downloadButton.textContent = "Download Debug Frame";
+
+    function renderFrame(frameIndex) {
+      if (currentGeneration !== generationId || debugCanvas !== canvas) {
+        return;
+      }
+
+      try {
+        var offset = frameIndex * framePlan.step;
+        drawRolledFrame(context, sourceCanvas, width, height, offset);
+
+        var imageData = context.getImageData(0, 0, width, height);
+        var expectedPixelCount = width * height;
+        var expectedByteCount = expectedPixelCount * 4;
+        var actualByteCount = imageData.data.length;
+        var actualPixelCount = actualByteCount / 4;
+
+        if (actualByteCount !== expectedByteCount) {
+          throw new Error(
+            "Debug preview failed at frame " + (frameIndex + 1) +
+            " (" + width + "x" + height + "): expected " +
+            expectedByteCount + " RGBA bytes, received " +
+            actualByteCount + "."
+          );
+        }
+
+        debugFrameIndex = frameIndex;
+        console.log("Pre-compression frame", {
+          mode: "pre-compression",
+          sourceWidth: width,
+          sourceHeight: height,
+          frameCount: framePlan.frameCount,
+          currentFrameIndex: frameIndex,
+          currentVerticalOffset: offset,
+          expectedPixelCount: expectedPixelCount,
+          actualPixelCount: actualPixelCount,
+          expectedRgbaByteCount: expectedByteCount,
+          actualRgbaByteCount: actualByteCount
+        });
+        setStatus(
+          "Debug preview: frame " + (frameIndex + 1) +
+          " of " + framePlan.frameCount +
+          ", offset " + offset + " px"
+        );
+        setProcessing(false);
+
+        var nextFrame = (frameIndex + 1) % framePlan.frameCount;
+        debugPlaybackTimer = window.setTimeout(function () {
+          renderFrame(nextFrame);
+        }, framePlan.delay);
+      } catch (error) {
+        console.error(error);
+        showError(error.message);
+      }
+    }
+
+    renderFrame(0);
+  }
+
+  function downloadDebugFrame() {
+    var canvas = debugCanvas;
+    var frameNumber = debugFrameIndex + 1;
+
+    if (!canvas || frameNumber < 1) {
+      showError("There is no debug frame to download yet.");
+      return;
+    }
+
+    canvas.toBlob(function (blob) {
+      if (canvas !== debugCanvas) {
+        return;
+      }
+
+      if (!blob) {
+        showError("Unable to export the current debug frame.");
+        return;
+      }
+
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "waterfall-debug-frame-" + frameNumber + ".png";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(function () {
+        URL.revokeObjectURL(url);
+      }, 0);
+    }, "image/png");
+  }
+
+  function stopDebugPlayback() {
+    window.clearTimeout(debugPlaybackTimer);
+    debugPlaybackTimer = 0;
+
+    if (debugCanvas) {
+      debugCanvas.remove();
+    }
+
+    debugCanvas = null;
+    debugFrameIndex = -1;
   }
 
   function drawRolledFrame(context, sourceCanvas, width, height, offset) {
@@ -219,7 +383,8 @@
     outputSection.setAttribute("aria-busy", String(isProcessing));
     uploadInput.disabled = isProcessing;
     frameRateInput.disabled = isProcessing;
-    downloadButton.disabled = isProcessing || !generatedUrl;
+    downloadButton.disabled = isProcessing ||
+      (!generatedUrl && (!debugCanvas || debugFrameIndex < 0));
   }
 
   function setStatus(message) {
@@ -229,7 +394,7 @@
   }
 
   function showError(message) {
-    clearGeneratedGif();
+    clearGeneratedOutput();
     setStatus("");
     errorMessage.textContent = message;
     errorMessage.hidden = false;
@@ -241,7 +406,9 @@
     errorMessage.hidden = true;
   }
 
-  function clearGeneratedGif() {
+  function clearGeneratedOutput() {
+    stopDebugPlayback();
+
     if (generatedUrl) {
       URL.revokeObjectURL(generatedUrl);
     }
@@ -250,6 +417,7 @@
     outputImage.removeAttribute("src");
     outputImage.alt = "";
     outputImage.hidden = true;
+    downloadButton.textContent = "Download GIF";
     downloadButton.disabled = true;
   }
 
