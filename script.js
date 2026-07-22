@@ -6,7 +6,7 @@
   var MAX_DIMENSION = 360;
   var MAX_FRAMES = 160;
   var DEFAULT_FILENAME = "waterfall-animation.gif";
-  var DEBUG_PRECOMPRESSION_OUTPUT = true;
+  var DEBUG_PRECOMPRESSION_OUTPUT = false;
 
   var uploadInput = document.getElementById("image-upload");
   var frameRateInput = document.getElementById("frame-rate");
@@ -535,6 +535,17 @@
     var writer = new BitWriter();
     var prefix = "";
 
+    function writeDataCode(code) {
+      writer.write(code, codeSize);
+
+      // The decoder creates each dictionary entry after reading the next
+      // data code, so that code must still use the previous bit width.
+      // Grow only after emitting it, ready for the following code.
+      if (nextCode === (1 << codeSize) && codeSize < 12) {
+        codeSize += 1;
+      }
+    }
+
     writer.write(clearCode, codeSize);
 
     for (var i = 0; i < indexes.length; i += 1) {
@@ -549,15 +560,11 @@
       if (Object.prototype.hasOwnProperty.call(dictionary, combined)) {
         prefix = combined;
       } else {
-        writer.write(dictionary[prefix], codeSize);
+        writeDataCode(dictionary[prefix]);
 
         if (nextCode < 4096) {
           dictionary[combined] = nextCode;
           nextCode += 1;
-
-          if (nextCode === (1 << codeSize) && codeSize < 12) {
-            codeSize += 1;
-          }
         } else {
           writer.write(clearCode, codeSize);
           dictionary = createInitialDictionary(clearCode);
@@ -570,7 +577,7 @@
     }
 
     if (prefix !== "") {
-      writer.write(dictionary[prefix], codeSize);
+      writeDataCode(dictionary[prefix]);
     }
 
     writer.write(endCode, codeSize);
