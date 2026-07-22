@@ -8,9 +8,13 @@
 </head>
 <body>
   <div class="content">
-    <label class="wf-field" for="image-upload">
+    <label id="image-drop-zone" class="wf-field wf-drop-zone" for="image-upload">
       <span class="wf-label">Upload image</span>
-      <input id="image-upload" type="file" accept="image/*">
+      <span id="image-drop-instruction" class="wf-drop-instruction">
+        Drag and drop an image here, or choose a file.
+      </span>
+      <input id="image-upload" type="file" accept="image/*" aria-describedby="image-drop-instruction selected-file-name">
+      <span id="selected-file-name" class="wf-selected-file" aria-live="polite">No image selected.</span>
     </label>
 
     <label class="wf-field" for="frame-rate">
@@ -19,7 +23,7 @@
     </label>
 
     <section id="output-section" class="wf-output" aria-live="polite" aria-busy="false">
-      <p id="status-message" class="wf-status">Upload an image to generate a waterfall GIF.</p>
+      <p id="status-message" class="wf-status">Choose or drop an image to generate a waterfall GIF.</p>
       <p id="error-message" class="wf-error" role="alert" hidden></p>
       <img id="output-image" alt="" hidden>
     </section>

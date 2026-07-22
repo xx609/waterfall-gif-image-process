@@ -12,9 +12,40 @@
   font: 600 15px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+.content > .wf-drop-zone {
+  border: 2px dashed #9daeba;
+  border-radius: 8px;
+  background: #f6f9fb;
+  padding: 16px;
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.content > .wf-drop-zone.is-dragging {
+  border-color: #1261a6;
+  background: #eaf4fd;
+  box-shadow: 0 0 0 4px rgba(18, 97, 166, 0.14);
+}
+
 .wf-label {
   display: block;
   margin-bottom: 7px;
+}
+
+.wf-drop-instruction,
+.wf-selected-file {
+  display: block;
+  font: 500 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.wf-drop-instruction {
+  margin-bottom: 10px;
+  color: #43515e;
+}
+
+.wf-selected-file {
+  margin-top: 8px;
+  color: #243241;
+  overflow-wrap: anywhere;
 }
 
 .content input[type="file"],

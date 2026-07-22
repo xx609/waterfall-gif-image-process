@@ -8,7 +8,9 @@
   var DEFAULT_FILENAME = "waterfall-animation.gif";
   var DEBUG_PRECOMPRESSION_OUTPUT = false;
 
+  var dropZone = document.getElementById("image-drop-zone");
   var uploadInput = document.getElementById("image-upload");
+  var selectedFileName = document.getElementById("selected-file-name");
   var frameRateInput = document.getElementById("frame-rate");
   var outputSection = document.getElementById("output-section");
   var statusMessage = document.getElementById("status-message");
@@ -23,12 +25,62 @@
   var debugCanvas = null;
   var debugPlaybackTimer = 0;
   var debugFrameIndex = -1;
+  var dragDepth = 0;
 
   uploadInput.addEventListener("change", function () {
-    selectedFile = uploadInput.files && uploadInput.files[0] ? uploadInput.files[0] : null;
-    clearGeneratedOutput();
-    scheduleGeneration();
+    selectImageFile(uploadInput.files && uploadInput.files[0] ? uploadInput.files[0] : null);
   });
+
+  dropZone.addEventListener("dragenter", function (event) {
+    if (!hasDraggedFiles(event)) return;
+
+    event.preventDefault();
+    dragDepth += 1;
+    dropZone.classList.add("is-dragging");
+  });
+
+  dropZone.addEventListener("dragover", function (event) {
+    if (!hasDraggedFiles(event)) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  });
+
+  dropZone.addEventListener("dragleave", function (event) {
+    if (!hasDraggedFiles(event)) return;
+
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) {
+      dropZone.classList.remove("is-dragging");
+    }
+  });
+
+  dropZone.addEventListener("drop", function (event) {
+    if (!hasDraggedFiles(event)) return;
+
+    event.preventDefault();
+    resetDragState();
+
+    var files = event.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    if (files.length > 1) {
+      rejectDroppedFiles("Please drop one image at a time.");
+      return;
+    }
+
+    uploadInput.value = "";
+    try {
+      uploadInput.files = files;
+    } catch (error) {
+      // The selected-file text below remains the fallback for older browsers.
+    }
+
+    selectImageFile(files[0]);
+  });
+
+  document.addEventListener("dragover", preventFileNavigation);
+  document.addEventListener("drop", preventFileNavigation);
 
   frameRateInput.addEventListener("input", function () {
     clearGeneratedOutput();
@@ -54,6 +106,49 @@
     link.remove();
   });
 
+  function hasDraggedFiles(event) {
+    var types = event.dataTransfer && event.dataTransfer.types;
+    return Boolean(types && Array.prototype.indexOf.call(types, "Files") !== -1);
+  }
+
+  function preventFileNavigation(event) {
+    if (hasDraggedFiles(event)) {
+      event.preventDefault();
+      if (event.type === "drop") {
+        resetDragState();
+      }
+    }
+  }
+
+  function resetDragState() {
+    dragDepth = 0;
+    dropZone.classList.remove("is-dragging");
+  }
+
+  function selectImageFile(file) {
+    generationId += 1;
+    window.clearTimeout(debounceTimer);
+    selectedFile = file;
+
+    selectedFileName.textContent = selectedFile
+      ? "Selected: " + selectedFile.name
+      : "No image selected.";
+
+    clearError();
+    clearGeneratedOutput();
+    setProcessing(false);
+    scheduleGeneration();
+  }
+
+  function rejectDroppedFiles(message) {
+    generationId += 1;
+    window.clearTimeout(debounceTimer);
+    selectedFile = null;
+    uploadInput.value = "";
+    selectedFileName.textContent = "No image selected.";
+    showError(message);
+  }
+
   function scheduleGeneration() {
     window.clearTimeout(debounceTimer);
     debounceTimer = window.setTimeout(generateGifFromInputs, 350);
@@ -70,7 +165,7 @@
     }
 
     if (!selectedFile) {
-      setStatus("Upload an image to generate a waterfall GIF.");
+      setStatus("Choose or drop an image to generate a waterfall GIF.");
       return;
     }
 
@@ -94,7 +189,7 @@
         return;
       }
 
-      var gifBytes = await encodeWaterfallGif(normalized.canvas, fps.value);
+      var gifBytes = await encodeWaterfallGif(normalized.canvas, fps.value, currentGeneration);
       if (currentGeneration !== generationId) return;
 
       var blob = new Blob([gifBytes], { type: "image/gif" });
@@ -162,7 +257,7 @@
     return { canvas: canvas, width: width, height: height };
   }
 
-  async function encodeWaterfallGif(sourceCanvas, fps) {
+  async function encodeWaterfallGif(sourceCanvas, fps, currentGeneration) {
     var width = sourceCanvas.width;
     var height = sourceCanvas.height;
     var frameCanvas = document.createElement("canvas");
@@ -175,6 +270,8 @@
     encoder.writeHeader();
 
     for (var frame = 0; frame < framePlan.frameCount; frame += 1) {
+      if (currentGeneration !== generationId) return null;
+
       var offset = frame * framePlan.step;
       if (offset >= height) break;
 
